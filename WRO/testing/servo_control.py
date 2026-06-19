@@ -9,6 +9,7 @@ import time
 # with execution of servo.stop and GPIO cleanup :)
 def move_servo(angle):
         GPIO.setmode(GPIO.BOARD)
+        angle = 90+angle
 
         # Set pin 11 as an output, and define as servo1 as PWM pin
         GPIO.setup(12,GPIO.OUT)
