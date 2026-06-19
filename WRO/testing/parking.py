@@ -10,7 +10,7 @@ from time import time, sleep
 # irány   parkoló      fal
 # |          |         |
 # |          |         v
-# -v----------v--------------
+# v----------v--------------
 # <-      |         |
 #   [autó]
 
