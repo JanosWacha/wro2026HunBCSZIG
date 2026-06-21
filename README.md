@@ -1,17 +1,7 @@
 # The "Sorry, I can't read this strange Hungarian team name" team's robot for WRO Competition
 ## 1. Introduction
 This repository contains the code and documentation for the robot developed by the "Sorry, I can't read this strange Hungarian team name" team for the WRO (World Robot Olympiad) competition. The robot is designed to perform various tasks and challenges as specified in the competition guidelines.
-## 2. Team Members
-- Benedek Vlasits
-- Boróka Bianka Barabás
-- János Wacha
-## 3. Robot Overview
-The robot is built using Lego components and is programmed using python. It is equipped with sensors and actuators that allow it to navigate the competition field, detect objects, and perform specific tasks required in the WRO challenges.
-## 4. Usage Instructions
-To use the robot, follow these steps:
-1. Plug the raspberry pi and the motor controller into the power bank.
-2. Place the robot on the competition field.
-3. Press the start button on the robot. The program will start in a few seconds.
-## 5. Installation
-To set up the robot, follow these steps:
-1. Clone this repository to your local machine.
+## 2. How is the hardware configured?
+The program gets the input from 4 [US-100 ultrasonic distance sensors](https://www.adafruit.com/product/4019) and a raspberry pi camera module v2. The ultrasonic sensors are used to detect objects and walls, and the camera is used to recognize colors and shapes. The robot uses this information to navigate the competition field and to get around obstacles on their good side. The car is controlled by a [Raspberry Pi 4 Model B](https://www.raspberrypi.com/products/raspberry-pi-4-model-b/), which processes the sensor data and camera input to make decisions about movement. It's moved by a [yellow gear motor](https://www.hestore.hu/prod_10035529.html#) and a [Tower Pro SG90 servo motor](https://towerpro.com.tw/product/sg90-7/).
+## 3. How is the software configured?
+The software is written in Python and uses the picamera2 library to interface with the raspberry pi camera module, and opencv to process the images captured by the camera. The ultrasonic sensors are interfaced using the serial library. The robot's behavior is defined in a main control loop that continuously reads sensor data, processes it, and makes decisions about movement based on predefined algorithms. The algorithms use proportional control to adjust the robot's direction based on the distance to obstacles detected by the ultrasonic sensors. The camera input is used to identify specific colors and shapes, which can trigger different behaviors in the robot, such as stopping. 
