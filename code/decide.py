@@ -37,11 +37,15 @@ class Servo:
     def get_steering(self):
         return self.steering
 
+def gomb_megnyomva():
+    # 1 -> nincs lenyomva. 0 -> le van nyomva
+    return GPIO.input(11) == 0
+
 if len(sys.argv) == 1:
     # Varunk a gomb megnyomasara.
     print('Gombra varunk...')
     GPIO.setup(11, GPIO.IN)
-    while x := GPIO.input(11): # 1 -> nincs lenyomva. 0 -> le van nyomva
+    while not gomb_megnyomva():
         pass
 
 # Megnyomtak a gombot, varunk 2 mp-et
@@ -63,66 +67,69 @@ Straight_lines = 0
 where_on_straight_line = None
 elore()
 start_time = time.monotonic()
-with open("run_log.txt", "wt") as flog:
-    while True:
-#        thing = get_thing()
-        thing=None
-        for i in range(5):
-            Disctance_Data = readout()
-            if all([x < 10000 for x in readout()]):
+try:
+    with open("run_log.txt", "wt") as flog:
+        while not gomb_megnyomva():
+    #        thing = get_thing()  # nem hasznaljuk meg a kamerat. Gyorsabb a kormanyzas visszacsatolasa igy.
+            thing=None
+            for i in range(5):
+                Disctance_Data = readout()
+                if all([x < 10000 for x in readout()]):
+                    break
+            else:
+                #        Disctance_Data = readout()
+                Disctance_Data = [x if x < 11000 else 0 for x in Disctance_Data] # pyright: ignore[reportPossiblyUnboundVariable]
+
+            # verified sensor order: front, right, back, left
+            Front = safe(Disctance_Data[0])
+            Rside = safe(Disctance_Data[1])
+            Back = safe(Disctance_Data[2])
+            Lside = safe(Disctance_Data[3])
+            hiba = None
+
+            K_BASE = 0.3  # proporcionalis vezerles szorzotenyezoje
+
+            if (Lside <= DANGEROUS_DIST) and (Rside > DANGEROUS_DIST):
+                # Ha kozelebb van a bal oldali fal, mint a veszelyes tavolsag, eros veszkormanyzas jobbra
+                print("Emergency steering right")
+                steering = SERVO_MIN
+            elif (Rside <= DANGEROUS_DIST) and (Lside > DANGEROUS_DIST):
+                # Ha kozelebb van a jobb oldali fal, mint a veszelyes tavolsag, eros veszkormanyzas balra
+                print("Emergency steering left")
+                steering = SERVO_MAX
+            else:
+                # normalis esetben a ket oldalso szenzor kulonbsegevel aranyos kormanyzas
+                hiba = Lside - Rside
+                steering = SERVO_CENTER + K_BASE * hiba
+                steering = max(SERVO_MIN, min(SERVO_MAX, steering))
+
+            print(
+                f"thing={thing} Front={Front} Lside={Lside} Rside={Rside} Back={Back} {hiba=} -> steering={steering}           ",
+                end="\n",
+            )
+            flog.write(f"{time.monotonic()-start_time}\t{Front}\t{Lside}\t{Rside}\t{Back}\t{steering}\n")
+
+            # Itt szamoljuk a megtett koroket. Az egyenes szakaszok veget eszleljuk.
+            # Figyelunk arra, hogy az elso es a hatso tavolsagszenzor erteke "eleg nagy" legyen (az auto
+            # egyenesben alljon). Ekkor ha az egyenes tavolsag (~ 3 m kell, hogy legyen, mert a palya ~ 3 m
+            # hosszu) 2/3-a elott vagyunk, akkor azt mondjuk, hogy az egyenes szakasz elejen vagyunk.
+            # Ha pedig a ~ 3 m hossz 1/3-anal kevesebbet mutat az elso tavolsagmero, akkor az egyenes szakasz
+            # vegen vagyunk. Ha eszrevesszuk, hogy Eleje -> Veg ugras van (azaz az aktualis egyenes szakasz
+            # vegere ertunk), akkor noveljuk az egyenes szakasz szamlalot. 3 kort kell megtenni, ugyhogy az
+            # egyenes szakasz szamlalas 12-ig ha eler, akkor megallunk.
+            if (Front + Back > STRAIGHT_LINE_FRONT_BACK_SUM_MIN) and (Front < 3000) and (Back < 3000):
+                # ellenorizzuk, hogy hol vagyunk az egyenesen
+                if Front / (Front + Back) < 0.5:
+                    # Egyenes vegen vagyunk
+                    if where_on_straight_line == 'Start':
+                        Straight_lines += 1
+                        print(Straight_lines)
+                    where_on_straight_line = 'End'
+                if Front / (Front + Back) > 0.6:
+                    # Egyenes elejen vagyunk
+                    where_on_straight_line = 'Start'
+            servo.set_steering(steering)
+            if Straight_lines == 14:
                 break
-        else:
-            #        Disctance_Data = readout()
-            Disctance_Data = [x if x < 11000 else 0 for x in Disctance_Data] # pyright: ignore[reportPossiblyUnboundVariable]
-
-        # verified sensor order: front, right, back, left
-        Front = safe(Disctance_Data[0])
-        Rside = safe(Disctance_Data[1])
-        Back = safe(Disctance_Data[2])
-        Lside = safe(Disctance_Data[3])
-        hiba = None
-
-        K_BASE = 0.3  # proporcionalis vezerles szorzotenyezoje
-
-        if (Lside <= DANGEROUS_DIST) and (Rside > DANGEROUS_DIST):
-            # Ha kozelebb van a bal oldali fal, mint a veszelyes tavolsag, eros veszkormanyzas jobbra
-            print("Emergency steering right")
-            steering = SERVO_MIN
-        elif (Rside <= DANGEROUS_DIST) and (Lside > DANGEROUS_DIST):
-            # Ha kozelebb van a jobb oldali fal, mint a veszelyes tavolsag, eros veszkormanyzas balra
-            print("Emergency steering left")
-            steering = SERVO_MAX
-        else:
-            # normalis esetben a ket oldalso szenzor kulonbsegevel aranyos kormanyzas
-            hiba = Lside - Rside
-            steering = SERVO_CENTER + K_BASE * hiba
-            steering = max(SERVO_MIN, min(SERVO_MAX, steering))
-
-        print(
-            f"thing={thing} Front={Front} Lside={Lside} Rside={Rside} Back={Back} {hiba=} -> steering={steering}           ",
-            end="\n",
-        )
-        flog.write(f"{time.monotonic()-start_time}\t{Front}\t{Lside}\t{Rside}\t{Back}\t{steering}\n")
-
-        # Itt szamoljuk a megtett koroket. Az egyenes szakaszok veget eszleljuk.
-        # Figyelunk arra, hogy az elso es a hatso tavolsagszenzor erteke "eleg nagy" legyen (az auto
-        # egyenesben alljon). Ekkor ha az egyenes tavolsag (~ 3 m kell, hogy legyen, mert a palya ~ 3 m
-        # hosszu) 2/3-a elott vagyunk, akkor azt mondjuk, hogy az egyenes szakasz elejen vagyunk.
-        # Ha pedig a ~ 3 m hossz 1/3-anal kevesebbet mutat az elso tavolsagmero, akkor az egyenes szakasz
-        # vegen vagyunk. Ha eszrevesszuk, hogy Eleje -> Veg ugras van (azaz az aktualis egyenes szakasz
-        # vegere ertunk), akkor noveljuk az egyenes szakasz szamlalot. 3 kort kell megtenni, ugyhogy az
-        # egyenes szakasz szamlalas 12-ig ha eler, akkor megallunk.
-        if (Front + Back > STRAIGHT_LINE_FRONT_BACK_SUM_MIN) and (Front < 3000) and (Back < 3000):
-            # ellenorizzuk, hogy hol vagyunk az egyenesen
-            if Front / (Front + Back) < 0.5:
-                # Egyenes vegen vagyunk
-                if where_on_straight_line == 'Start':
-                    Straight_lines += 1
-                    print(Straight_lines)
-                where_on_straight_line = 'End'
-            if Front / (Front + Back) > 0.6:
-                # Egyenes elejen vagyunk
-                where_on_straight_line = 'Start'
-        servo.set_steering(steering)
-        if Straight_lines == 14:
-            break
+finally:
+    stop()
