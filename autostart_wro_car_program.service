@@ -1,0 +1,13 @@
+[Unit]
+Description=Starts the car driving program
+
+[Service]
+Environment=PYTHON_UNBUFFERED=1
+ExecStart=/usr/bin/python3 /home/pi/Documents/wro/decide.py
+Restart=always
+User=pi
+WorkingDirectory=/home/pi/Documents/wro
+
+
+[Install]
+WantedBy=multi-user.target
