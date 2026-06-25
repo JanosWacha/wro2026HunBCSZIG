@@ -3,7 +3,7 @@ Description=Starts the car driving program
 
 [Service]
 Environment=PYTHON_UNBUFFERED=1
-ExecStart=/usr/bin/python3 /home/pi/Documents/wro/decide.py
+ExecStart=/usr/bin/python3 /home/pi/Documents/wro2026HunBCSZIG/code/ObserveButton.py
 Restart=always
 User=pi
 WorkingDirectory=/home/pi/Documents/wro

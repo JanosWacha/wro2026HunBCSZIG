@@ -1,70 +1,202 @@
 import cv2
-from picamera2 import Picamera2
-
 import numpy as np
-import time
-
-#Picamera2 setup
+from picamera2 import Picamera2
+# ============ PICAMERA2 SETUP ============
 cam = Picamera2()
-#width, height = 3280, 2464
-width, height = 640, 480
-RED_THRESHOLD = 200
-RED_MIN_PERCENT = 75
+width, height = 320, 180
 
+w, h = cam.sensor_modes[2]["size"]
 cam.configure(
-    cam.create_preview_configuration(
-        main={"format": 'XRGB8888', "size": (width, height)}, display=None))
+    cam.create_video_configuration(
+        main={"format": 'XRGB8888', "size": (width, height)}))
 cam.start()
 
-#Colour ranges for red and green in HSV colour spacew
-lower_red1 = np.array([0, 100, 100])
-upper_red1 = np.array([10, 255, 255])
+# ============ PIROS -- szélesebb, biztonságosabb tartomány ============
+RED_LOWER1 = np.array([0, 140, 80])
+RED_UPPER1 = np.array([8, 255, 255])
+RED_LOWER2 = np.array([172, 140, 80])
+RED_UPPER2 = np.array([180, 255, 255])
 
-lower_red2 = np.array([160, 100, 100])
-upper_red2 = np.array([180, 255, 255])
+# ============ ZÖLD -- kiterjesztve sárgászöld és sötétebb zöld felé is ============
+GREEN_LOWER = np.array([35, 60, 40])
+GREEN_UPPER = np.array([90, 255, 255])
 
-lower_green = np.array([35, 50, 50])
-upper_green = np.array([85, 255, 255])
+# ============ BŐRSZÍN -- explicit kizárás ============
+SKIN_LOWER = np.array([0, 30, 60])
+SKIN_UPPER = np.array([25, 150, 255])
 
-#The function that captures the image of the camera and checks if there is a a red or green obstacle on the image.
-#Then it decides that it is red or green and returns it.
-def get_thing():
-    N_oszlop = 4
-    N_sor = 4
+KERNEL = np.ones((5, 5), np.uint8)
+
+# ============ SERVO BEÁLLÍTÁSOK ============
+SERVO_CENTER = 100
+SERVO_MIN = 0
+SERVO_MAX = 200
+NO_OVERRIDE = -1   # ezt adjuk vissza, ha a fő program vezérelje a servot
+
+# ============ ÉRZÉKENYSÉG ============
+K = 0.002
+BASE_K = 0.01
+
+# ============ KÜSZÖBÖK ============
+MIN_AREA_NOISE = 250          # zajszűrés
+MIN_AREA_TO_REACT = 2000      # "túl messze, ne reagáljunk" -- csak KÖZÉPEN lévő pylonra
+AREA_AT_50CM = 6000           # "most már erősen kanyarodjunk" referenciapont
+SAFE_PASS_RATIO = 0.1    # safe-pass zóna küszöb -- duplázva (volt: 0.04)
+
+# Mennyire kell oldalra csúsznia a pylonnak (px), hogy "oldalt van" számítson,
+# és emiatt felülírja a MIN_AREA_TO_REACT-et akkor is, ha messze van.
+SIDE_OFFSET_OVERRIDE_PX = 40
+
+DIRECTIONAL_DAMPING = 0.6     # jó oldalon mennyire csillapítható a magnitude
+
+
+def get_frame_bgr():
     frame = cam.capture_array()
-    height, width = frame.shape[:2]
-    sormagassag = height // N_sor
-    oszlopszelesseg = width // N_oszlop
-    color = np.zeros((N_sor, N_oszlop))
-    for i_oszlop in range(N_oszlop):
-        for i_sor in range(N_sor):
-            resz = frame[i_sor*sormagassag:(i_sor+1)*sormagassag, i_oszlop*oszlopszelesseg:(i_oszlop+1)*oszlopszelesseg, :]
-            
-            redmedian = np.median(resz[:, :, 2])
-            greenmedian = np.median(resz[:, :, 1])
-            bluemedian = np.median(resz[:, :, 0])
-            
-            # Zöld felismerése: zöld csatorna mediánja > kéké, zöld csatorna mediánja > pirosé, zöld csatorna mediánja > 100
-            if redmedian < greenmedian and greenmedian > 100 and bluemedian < greenmedian:
-                color[i_sor, i_oszlop] = 2
-            # Piros felismerése: piros csatorna mediánja > 200, többié < 50
-            if redmedian > 200 and greenmedian < 50 and bluemedian < 50:
-                color[i_sor, i_oszlop] = 1
+    frame_bgr = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
+    return frame_bgr
 
-#    print('Piros:', np.sum(color==1), 'Zold:', np.sum(color==2))
-#    print('Piros:', np.sum(color[:, :N_oszlop//2]==1), np.sum(color[:, N_oszlop//2:]==1))
-#    print('Zold:', np.sum(color[:, :N_oszlop//2]==2), np.sum(color[:, N_oszlop//2:]==2))
 
-    piros_van = (color[3*sormagassag:4*sormagassag] == 1).sum() > 1
-    zold_van = (color[3*sormagassag:4*sormagassag] == 2).sum() > 1
-    return piros_van, zold_van
-    
+def _clean_mask(mask):
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, KERNEL, iterations=1)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, KERNEL, iterations=2)
+    return mask
 
-if __name__ == '__main__':
+
+def _largest_contour_info(mask, min_area):
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return 0
+    c = max(contours, key=cv2.contourArea)
+    area = cv2.contourArea(c)
+    if area < min_area:
+        return 0
+    x, y, w, h = cv2.boundingRect(c)
+    return {"area": area, "bbox": (x, y, w, h)}
+
+
+def detect_pylon(frame_bgr, min_area=MIN_AREA_NOISE):
+    hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
+
+    red_mask_raw = (
+        cv2.inRange(hsv, RED_LOWER1, RED_UPPER1) |
+        cv2.inRange(hsv, RED_LOWER2, RED_UPPER2)
+    )
+    skin_mask = cv2.inRange(hsv, SKIN_LOWER, SKIN_UPPER)
+    red_mask = cv2.bitwise_and(red_mask_raw, cv2.bitwise_not(skin_mask))
+    red_mask = _clean_mask(red_mask)
+
+    green_mask = cv2.inRange(hsv, GREEN_LOWER, GREEN_UPPER)
+    green_mask = _clean_mask(green_mask)
+
+    red_info = _largest_contour_info(red_mask, min_area)
+    green_info = _largest_contour_info(green_mask, min_area)
+
+    result = {"color": None, "area": 0, "bbox": None, "center_x": None}
+
+    if red_info and green_info:
+        winner, color = (red_info, "red") if red_info["area"] >= green_info["area"] else (green_info, "green")
+    elif red_info:
+        winner, color = red_info, "red"
+    elif green_info:
+        winner, color = green_info, "green"
+    else:
+        return result
+
+    x, y, w, h = winner["bbox"]
+    result.update({
+        "color": color,
+        "area": winner["area"],
+        "bbox": (x, y, w, h),
+        "center_x": x + w // 2,
+    })
+    return result
+
+
+def compute_avoidance_servo(pylon_result, frame_width):
+    """
+    Visszaadás: (servo_angle:int, is_avoiding:bool, reason:str)
+    servo_angle == -1 (NO_OVERRIDE)  ->  a fő program vezérelje a servot
+        (pl. wall-following), ez NEM jelent kerülést.
+    reason: "no_pylon" | "too_far" | "safe_pass" | "avoiding"
+    """
+    color = pylon_result["color"]
+    if color is None:
+        return NO_OVERRIDE, False, "no_pylon"
+
+    area = pylon_result["area"]
+    frame_center_x = frame_width / 2
+    offset = pylon_result["center_x"] - frame_center_x  # + jobbra, - balra
+
+    # --- "Túl messze" csak akkor blokkol, ha a pylon KÖZÉPEN van.
+    #     Ha már jelentősen oldalra csúszott, az azt jelenti hogy már
+    #     kerülés közben vagyunk -- akkor is reagáljunk, ha area kicsi. ---
+    is_significantly_sideways = abs(offset) > SIDE_OFFSET_OVERRIDE_PX
+    if area < MIN_AREA_TO_REACT and not is_significantly_sideways:
+        return NO_OVERRIDE, False, "too_far"
+
+    if color == "red":
+        directional_offset = -offset   # jó oldal (jobbra, offset>0) -> negatív
+    else:
+        directional_offset = offset    # jó oldal (balra, offset<0) -> negatív
+
+    # directional_offset NEGATÍV -> jó oldalon van
+    # directional_offset POZITÍV -> rossz oldalon van
+
+    # --- Safe-pass zóna: csak akkor, ha JÓ OLDALON van és elég messze
+    #     a középvonaltól a közelségéhez képest ---
+    safe_ratio = -directional_offset / max(area, 1)
+    if safe_ratio > SAFE_PASS_RATIO:
+        return NO_OVERRIDE, False, "safe_pass"
+
+    # --- Aktív kerülés ---
+    closeness = min(area / AREA_AT_50CM, 1.5)
+    base = BASE_K * area * closeness
+    directional_term = K * area * directional_offset
+
+    if directional_term >= 0:
+        magnitude = base + directional_term
+    else:
+        magnitude = base + directional_term * DIRECTIONAL_DAMPING
+        magnitude = max(magnitude, base * (1 - DIRECTIONAL_DAMPING))
+    Smoothness = magnitude * 1.2
+    if color == "green":
+        steering = SERVO_CENTER + magnitude
+    else:
+        steering = SERVO_CENTER - magnitude
+
+    steering = max(SERVO_MIN, min(SERVO_MAX, steering))
+    return int(round(steering)), True, "avoiding"
+
+
+def get_steering_command(wall_following_servo_angle):
+    frame_bgr = get_frame_bgr()
+    frame_height, frame_width = frame_bgr.shape[:2]
+    pylon = detect_pylon(frame_bgr)
+    avoid_angle, is_avoiding, reason = compute_avoidance_servo(pylon, frame_width)
+
+    if is_avoiding:
+        return avoid_angle, frame_bgr
+    return wall_following_servo_angle, frame_bgr
+
+
+if __name__ == "__main__":
     while True:
-        p, z = get_thing()
-        if p:
-            print('Piros')
-        if z: 
-            print('Zold')
-        time.sleep(1)
+        frame = get_frame_bgr()
+
+        frame_width = frame.shape[1]
+        pylon = detect_pylon(frame)
+        servo_angle, is_avoiding, reason = compute_avoidance_servo(pylon, frame_width)
+
+        if pylon["color"]:
+            x, y, w, h = pylon["bbox"]
+            offset = pylon["center_x"] - frame_width / 2
+            print(f"color={pylon['color']} area={pylon['area']:.0f} offset={offset:.0f} "
+                  f"servo={servo_angle} reason={reason}")
+        print(f"servo={servo_angle} ({reason})")
+        cv2.putText(frame, f"servo={servo_angle} ({reason})", (10, 30),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+    cv2.destroyAllWindows()
+    cam.stop()

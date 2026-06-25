@@ -1,10 +1,12 @@
-from GetThing import get_thing
+from GetThing import get_steering_command
 from Uart_Disctance_Sensor import readout
 from motorcontrol import elore, hatra, stop
 from time import sleep
 import time
 import RPi.GPIO as GPIO
 import sys
+from cv2 import inRange, countNonZero
+from numpy import array
 
 DEFAULT_DISTANCE = 0.1
 DANGEROUS_DIST = 250 
@@ -36,17 +38,11 @@ class Servo:
 
     def get_steering(self):
         return self.steering
+GPIO.setup(11, GPIO.IN)
 
 def gomb_megnyomva():
     # 1 -> nincs lenyomva. 0 -> le van nyomva
     return GPIO.input(11) == 0
-
-if len(sys.argv) == 1:
-    # Varunk a gomb megnyomasara.
-    print('Gombra varunk...')
-    GPIO.setup(11, GPIO.IN)
-    while not gomb_megnyomva():
-        pass
 
 # Megnyomtak a gombot, varunk 2 mp-et
 
@@ -62,74 +58,151 @@ def safe(value):
         else min(DEFAULT_DISTANCE, value) if value is not None else DEFAULT_DISTANCE
     )
 
-
+ob = False
 Straight_lines = 0
-where_on_straight_line = None
+where_on_straight_line = "Start"
 elore()
 start_time = time.monotonic()
 try:
-    with open("run_log.txt", "wt") as flog:
-        while not gomb_megnyomva():
-    #        thing = get_thing()  # nem hasznaljuk meg a kamerat. Gyorsabb a kormanyzas visszacsatolasa igy.
-            thing=None
-            for i in range(5):
-                Disctance_Data = readout()
-                if all([x < 10000 for x in readout()]):
-                    break
-            else:
-                #        Disctance_Data = readout()
-                Disctance_Data = [x if x < 11000 else 0 for x in Disctance_Data] # pyright: ignore[reportPossiblyUnboundVariable]
-
-            # verified sensor order: front, right, back, left
-            Front = safe(Disctance_Data[0])
-            Rside = safe(Disctance_Data[1])
-            Back = safe(Disctance_Data[2])
-            Lside = safe(Disctance_Data[3])
-            hiba = None
-
-            K_BASE = 0.3  # proporcionalis vezerles szorzotenyezoje
-
-            if (Lside <= DANGEROUS_DIST) and (Rside > DANGEROUS_DIST):
-                # Ha kozelebb van a bal oldali fal, mint a veszelyes tavolsag, eros veszkormanyzas jobbra
-                print("Emergency steering right")
-                steering = SERVO_MIN
-            elif (Rside <= DANGEROUS_DIST) and (Lside > DANGEROUS_DIST):
-                # Ha kozelebb van a jobb oldali fal, mint a veszelyes tavolsag, eros veszkormanyzas balra
-                print("Emergency steering left")
-                steering = SERVO_MAX
-            else:
-                # normalis esetben a ket oldalso szenzor kulonbsegevel aranyos kormanyzas
-                hiba = Lside - Rside
-                steering = SERVO_CENTER + K_BASE * hiba
-                steering = max(SERVO_MIN, min(SERVO_MAX, steering))
-
-            print(
-                f"thing={thing} Front={Front} Lside={Lside} Rside={Rside} Back={Back} {hiba=} -> steering={steering}           ",
-                end="\n",
-            )
-            flog.write(f"{time.monotonic()-start_time}\t{Front}\t{Lside}\t{Rside}\t{Back}\t{steering}\n")
-
-            # Itt szamoljuk a megtett koroket. Az egyenes szakaszok veget eszleljuk.
-            # Figyelunk arra, hogy az elso es a hatso tavolsagszenzor erteke "eleg nagy" legyen (az auto
-            # egyenesben alljon). Ekkor ha az egyenes tavolsag (~ 3 m kell, hogy legyen, mert a palya ~ 3 m
-            # hosszu) 2/3-a elott vagyunk, akkor azt mondjuk, hogy az egyenes szakasz elejen vagyunk.
-            # Ha pedig a ~ 3 m hossz 1/3-anal kevesebbet mutat az elso tavolsagmero, akkor az egyenes szakasz
-            # vegen vagyunk. Ha eszrevesszuk, hogy Eleje -> Veg ugras van (azaz az aktualis egyenes szakasz
-            # vegere ertunk), akkor noveljuk az egyenes szakasz szamlalot. 3 kort kell megtenni, ugyhogy az
-            # egyenes szakasz szamlalas 12-ig ha eler, akkor megallunk.
-            if (Front + Back > STRAIGHT_LINE_FRONT_BACK_SUM_MIN) and (Front < 3000) and (Back < 3000):
-                # ellenorizzuk, hogy hol vagyunk az egyenesen
-                if Front / (Front + Back) < 0.5:
-                    # Egyenes vegen vagyunk
-                    if where_on_straight_line == 'Start':
-                        Straight_lines += 1
-                        print(Straight_lines)
-                    where_on_straight_line = 'End'
-                if Front / (Front + Back) > 0.6:
-                    # Egyenes elejen vagyunk
-                    where_on_straight_line = 'Start'
-            servo.set_steering(steering)
-            if Straight_lines == 14:
+    while not gomb_megnyomva():
+        thing = None
+        for i in range(5):
+            Disctance_Data = readout()
+            if all([x < 10000 for x in readout()]):
                 break
+        else:
+            #        Disctance_Data = readout()
+            Disctance_Data = [x if x < 11000 else 0 for x in Disctance_Data] # pyright: ignore[reportPossiblyUnboundVariable]
+
+        # verified sensor order: front, right, back, left
+        Front = safe(Disctance_Data[0])
+        Rside = safe(Disctance_Data[1])
+        Back = safe(Disctance_Data[2])
+        Lside = safe(Disctance_Data[3])
+        hiba = None
+
+        K_BASE = 0.3  # proporcionalis vezerles szorzotenyezoje
+
+        if (Lside <= DANGEROUS_DIST) and (Rside > DANGEROUS_DIST):
+            # Ha kozelebb van a bal oldali fal, mint a veszelyes tavolsag, eros veszkormanyzas jobbra
+            print("Emergency steering right")
+            steering = SERVO_MIN
+        elif (Rside <= DANGEROUS_DIST) and (Lside > DANGEROUS_DIST):
+            # Ha kozelebb van a jobb oldali fal, mint a veszelyes tavolsag, eros veszkormanyzas balra
+            print("Emergency steering left")
+            steering = SERVO_MAX
+        else:
+            # normalis esetben a ket oldalso szenzor kulonbsegevel aranyos kormanyzas
+            hiba = Lside - Rside
+            steering = SERVO_CENTER + K_BASE * hiba
+            steering = max(SERVO_MIN, min(SERVO_MAX, steering))
+
+        # Itt szamoljuk a megtett koroket. Az egyenes szakaszok veget eszleljuk.
+        # Figyelunk arra, hogy az elso es a hatso tavolsagszenzor erteke "eleg nagy" legyen (az auto
+        # egyenesben alljon). Ekkor ha az egyenes tavolsag (~ 3 m kell, hogy legyen, mert a palya ~ 3 m
+        # hosszu) 2/3-a elott vagyunk, akkor azt mondjuk, hogy az egyenes szakasz elejen vagyunk.
+        # Ha pedig a ~ 3 m hossz 1/3-anal kevesebbet mutat az elso tavolsagmero, akkor az egyenes szakasz
+        # vegen vagyunk. Ha eszrevesszuk, hogy Eleje -> Veg ugras van (azaz az aktualis egyenes szakasz
+        # vegere ertunk), akkor noveljuk az egyenes szakasz szamlalot. 3 kort kell megtenni, ugyhogy az
+        # egyenes szakasz szamlalas 12-ig ha eler, akkor megallunk.
+        if (Front + Back > STRAIGHT_LINE_FRONT_BACK_SUM_MIN) and (Front < 3000) and (Back < 3000):
+            # ellenorizzuk, hogy hol vagyunk az egyenesen
+            if Front / (Front + Back) < 0.3:
+                # Egyenes vegen vagyunk
+                if where_on_straight_line == 'Start':
+                    Straight_lines += 1
+                    print(Straight_lines)
+                where_on_straight_line = 'End'
+            if Front / (Front + Back) > 0.6:
+                # Egyenes elejen vagyunk
+                where_on_straight_line = 'Start'
+        print(steering, where_on_straight_line, hiba)
+        steer = get_steering_command(steering)[0]
+        if steer != steering:
+            ob = True
+            break
+        servo.set_steering(steering)
+        if Straight_lines == 11:
+            if abs(Front-Back) < 50:
+                break
+    stw = None
+    magentaseen = False
+    minmagenta = array([125, 0, 125])
+    maxmagenta = array([255, 80, 255])
+    print("obstacle")
+    Straight_lines = Straight_lines//4
+    while ob and not gomb_megnyomva():
+        thing = None
+        for i in range(5):
+            Disctance_Data = readout()
+            if all([x < 10000 for x in readout()]):
+                break
+        else:
+            Disctance_Data = [x if x < 11000 else 0 for x in Disctance_Data]
+
+        Front = safe(Disctance_Data[0])
+        Rside = safe(Disctance_Data[1])
+        Back = safe(Disctance_Data[2])
+        Lside = safe(Disctance_Data[3])
+
+        K_BASE = 0.17
+
+        # ================== NORMÁL + OSZLOP VÉSZKERÜLÉS (eredeti logika) ==================
+        if Front < 120 and Rside > Lside:
+            print("Emergency steering right")
+            steering = SERVO_MIN
+        elif Front < 120 and Rside < Lside:
+            print("Emergency steering left")
+            steering = SERVO_MAX
+        else:
+            hiba = Lside - Rside
+            steering = SERVO_CENTER + K_BASE * hiba
+            steering = max(SERVO_MIN, min(SERVO_MAX, steering))
+
+        
+
+        # Vision felülírás
+        final_steering = get_steering_command(steering)
+
+        # EREDETI biztonsági front rész (oszlopokhoz)
+        if steering == final_steering[0] and Front < 150:
+            if Lside > Rside:
+                servo.set_steering(200)
+            elif Rside > Lside:
+                servo.set_steering(0)
+            stw = time.monotonic()
+        else:
+            if stw and time.monotonic() - stw < 0.5:
+                continue
+            elif stw and time.monotonic() - stw >= 0.5:
+                stw = 0
+            servo.set_steering(final_steering[0])
+
+        # ================== EREDETI KÖR SZÁMLÁLÁS ==================
+        """
+        if (
+            (Front + Back > STRAIGHT_LINE_FRONT_BACK_SUM_MIN)
+            and (Front < 3000)
+            and (Back < 3000)
+        ):
+            if Front / (Front + Back) < 0.3:
+                if where_on_straight_line == "Start":
+                    Straight_lines += 1
+                    print(Straight_lines)
+                where_on_straight_line = "End"
+            if Front / (Front + Back) > 0.6:
+                where_on_straight_line = "Start"
+
+        if Straight_lines == 12:
+            break"""
+        if (imagenta := countNonZero(inRange(final_steering[1], minmagenta, maxmagenta))) > 10000:
+            magentaseen = True
+        elif magentaseen and imagenta < 30:
+            Straight_lines += 4
+            magentaseen = False
+        if Straight_lines == 12:
+            while readout()[0] > 700:
+                pass
+            break
 finally:
     stop()
