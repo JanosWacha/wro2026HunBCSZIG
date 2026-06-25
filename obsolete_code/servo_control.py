@@ -10,4 +10,7 @@ def move_servo(angle):
         #Start the PWM and set the duty cycle to move the servo to the desired angle.
         servo1.start(0)
         servo1.ChangeDutyCycle(2+(angle/18))
-        time.sleep(0.0001)
+if __name__ == "__main__":
+	while i:=input() != "q":
+		move_servo(int(i))
+
