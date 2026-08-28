@@ -1,0 +1,3 @@
+First week Research:
+	We are using the bno055 sensor to make exactly 90 degree turns and replaceing the distance sensors with a lidar to free up pins on 	the raswberry pi and get a exact Digital 2d replica of our surrondings.
+        - for the open challange the softver will check the cars absolute rotation on the z axis and when we detect a turn with the lidar   	and when we detect the turn we either add  or subtract 90 deggres from the value we got when cheking the absolute z rotation of the 	car and we always turn the car towards that angle and when we add/subtract for the 12 time we can stop.  
