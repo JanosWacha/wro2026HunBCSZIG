@@ -2,6 +2,7 @@ from rplidar import RPLidar
 from threading import Thread
 
 lidar = RPLidar('/dev/ttyUSB0')
+lidar.start_motor()
 
 fw = 1024
 rt = 1024
