@@ -22,9 +22,11 @@ def get_lidar_data() -> tuple | None:
         return None
     try:
         qin.put(None)
-        return qout.get()
-    except Empty:
-        return None
+        return qout.get(timeout=1)
+    except Full:
+        qin.queue.clear()
+        qin.put(None)
+        return qout.get(timeout=1)
 
 def stop_lidar():
     global running
