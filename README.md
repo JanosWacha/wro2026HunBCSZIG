@@ -34,6 +34,7 @@ We chose the Raspberry Pi 4 Model B for its powerful processing capabilities, wh
 - Barabás Boróka
 - Vlasits Benedek
 - Wacha János
+
 ![Team members](Engineering_diary/team_members.jpeg)
 ![While working](Engineering_diary/while_working.webp)
 
