@@ -10,6 +10,8 @@ The program gets the input from 4 [US-100 ultrasonic distance sensors](https://w
 
 The body of the car is made from Lego(R), mostly Technic parts collected by us and our parents during a few decades. Parts that are used to couple the motors to Lego(R) axes have been 3D-printed. The four-wheeled design ensures a good balance. The heavier parts (e.g. battery) are situated at the middle of the chassis, as near to the ground as possible. The structure is simple, easy to modify and repair. The main goal was to perform accurately and efficiently in the contest.
 
+The car gets its power from a [Varta Power Bank Energy Type 57976](https://www.varta-ag.com/en/consumer/product-categories/portable-power/power-bank-energy-10000). It's USB type C output is connected to the Raspberry Pi's USB type C input. The power bank can provide 5V/3A, which is enough for the Raspberry Pi and the sensors. One of the USB type A ports on the power bank is used to give more power to the motor controller. The power bank has a capacity of 10000mAh, which is enough for a few hours of operation.
+
 The wiring of the sensors and motors is done using a homemade pin duplication board. 
 ![Front of the pin duplication board](Engineering_diary/pin_duplicator.jpg)
 ![Back of the pin duplication board](Engineering_diary/pin_duplicator_solder.jpg)
