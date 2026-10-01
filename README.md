@@ -44,6 +44,7 @@ We chose the Raspberry Pi 4 Model B for its powerful processing capabilities, wh
 ## 7. Our Achievement
 - 2nd place in the Hungarian WRO 2026 competition
 
+![Team when we won the competition](Engineering_diary/win.jpg)
 ![Cup](Engineering_diary/cup.jpg)
 
 ## 8. Contact Information
