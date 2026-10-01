@@ -1,0 +1,3 @@
+sudo systemctl stop autostart_wro_car_program.service
+sudo systemctl disable autostart_wro_car_program.service
+sudo systemctl daemon-reload

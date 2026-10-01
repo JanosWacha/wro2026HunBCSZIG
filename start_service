@@ -1,0 +1,4 @@
+sudo ln -s /home/pi/documents/wro2026HunBCSZIG /root/system/systemc
+sudo systemctl enable autostart_wro_car_program.service
+sudo systemctl start autostart_wro_car_program.service
+sudo systemctl daemon-reload
