@@ -14,7 +14,7 @@ for ser in sers:
 
 def readout():
     """Read out the distance sensors one-by-one, return a list of distances in mm.
-    Always returns a list of length 4 (front, left, right, back), in that fixed order.
+    Always returns a list of length 4 (back, left, right, front), in that fixed order.
     If a sensor times out or sends an invalid reply, its slot is set to None
     instead of being skipped, so the indices never shift around."""
     out = [0, 0, 0, 0]
@@ -35,7 +35,7 @@ def readout():
 
 if __name__ == "__main__":
     print('Performing readout frequency measurement...', end='', flush=True)
-    N_READOUT = 20
+    N_READOUT = 100
     t0 = time.monotonic()
     for i in range(N_READOUT):
         readout()
@@ -44,5 +44,5 @@ if __name__ == "__main__":
     print(f'{N_READOUT} readouts in {t1-t0:.3f} seconds.')
     print(f'Readout frequency: {N_READOUT/(t1-t0):.2f} Hz.')
     while True:
-        front, right, back, left = readout()
+        back, left, right, front = readout()
         print(f'{front=:.0f} {back=:.0f} {right=:.0f} {left=:.0f} l-r={left-right:.0f}                    \r', end='')

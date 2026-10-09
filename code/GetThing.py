@@ -5,23 +5,23 @@ from picamera2 import Picamera2
 cam = Picamera2()
 width, height = 320, 180
 
-w, h = cam.sensor_modes[2]["size"]
 cam.configure(
     cam.create_video_configuration(
         main={"format": 'XRGB8888', "size": (width, height)}))
 cam.start()
 
 # ============ PIROS -- szélesebb, biztonságosabb tartomány ============
-RED_LOWER1 = np.array([0, 140, 80])
-RED_UPPER1 = np.array([8, 255, 255])
-RED_LOWER2 = np.array([172, 140, 80])
+RED_LOWER1 = np.array([0, 150, 100])   # szűkített
+RED_UPPER1 = np.array([5, 255, 255])   # nagyon szűkített hue
+
+RED_LOWER2 = np.array([175, 150, 100]) # szűkített
 RED_UPPER2 = np.array([180, 255, 255])
 
 # ============ ZÖLD -- kiterjesztve sárgászöld és sötétebb zöld felé is ============
 GREEN_LOWER = np.array([35, 60, 40])
 GREEN_UPPER = np.array([90, 255, 255])
 
-# ============ BŐRSZÍN -- explicit kizárás ============
+# ============ BŐRSZÍN -- explicit kizárás ===========w=
 SKIN_LOWER = np.array([0, 30, 60])
 SKIN_UPPER = np.array([25, 150, 255])
 
@@ -34,24 +34,24 @@ SERVO_MAX = 200
 NO_OVERRIDE = -1   # ezt adjuk vissza, ha a fő program vezérelje a servot
 
 # ============ ÉRZÉKENYSÉG ============
-K = 0.002
-BASE_K = 0.01
+K = 0.5
+BASE_K = 0.6
 
 # ============ KÜSZÖBÖK ============
-MIN_AREA_NOISE = 250          # zajszűrés
-MIN_AREA_TO_REACT = 2000      # "túl messze, ne reagáljunk" -- csak KÖZÉPEN lévő pylonra
-AREA_AT_50CM = 6000           # "most már erősen kanyarodjunk" referenciapont
-SAFE_PASS_RATIO = 0.1    # safe-pass zóna küszöb -- duplázva (volt: 0.04)
+MIN_AREA_NOISE = 50        # zajszűrés
+MIN_AREA_TO_REACT = 100 # "túl messze, ne reagáljunk" -- csak KÖZÉPEN lévő pylonra
+AREA_AT_50CM = 300      # "most már erősen kanyarodjunk" referenciapont
+SAFE_PASS_RATIO = 0.05   # safe-pass zóna küszöb -- duplázva (volt: 0.04)
 
 # Mennyire kell oldalra csúsznia a pylonnak (px), hogy "oldalt van" számítson,
 # és emiatt felülírja a MIN_AREA_TO_REACT-et akkor is, ha messze van.
-SIDE_OFFSET_OVERRIDE_PX = 40
+SIDE_OFFSET_OVERRIDE_PX = 150 
 
-DIRECTIONAL_DAMPING = 0.6     # jó oldalon mennyire csillapítható a magnitude
+DIRECTIONAL_DAMPING = 0.7    # jó oldalon mennyire csillapítható a magnitude
 
 
 def get_frame_bgr():
-    frame = cam.capture_array()
+    frame = cam.capture_array()[:, 60:120]
     frame_bgr = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
     return frame_bgr
 
